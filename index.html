@@ -1,0 +1,1726 @@
+<!DOCTYPE html>
+<html lang="pt-BR">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no, viewport-fit=cover">
+    <title>DiaClaro - Agenda, Clima & Notícias</title>
+    
+    <!-- Tailwind CSS -->
+    <script src="https://cdn.tailwindcss.com"></script>
+    <script>
+        tailwind.config = {
+            darkMode: 'class',
+            theme: {
+                extend: {
+                    colors: {
+                        brand: {
+                            50: '#f0f7ff',
+                            100: '#e0effe',
+                            500: '#0284c7',
+                            600: '#0369a1',
+                            700: '#075985',
+                        },
+                        sepia: {
+                            bg: '#f4ebd0',
+                            card: '#e8dcba',
+                            text: '#433422',
+                            border: '#d3c19a'
+                        }
+                    },
+                    borderRadius: {
+                        'xl': '1rem',
+                        '2xl': '1.5rem',
+                        '3xl': '2rem'
+                    }
+                }
+            }
+        }
+    </script>
+
+    <!-- Font Awesome Icons -->
+    <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.4.0/css/all.min.css">
+    
+    <!-- Google Fonts Inter -->
+    <link rel="preconnect" href="https://fonts.googleapis.com">
+    <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+    <link href="https://fonts.googleapis.com/css2?family=Inter:wght@300;400;500;600;700;800&display=swap" rel="stylesheet">
+
+    <!-- Leaflet CSS & JS for Weather Radar -->
+    <link rel="stylesheet" href="https://unpkg.com/leaflet@1.9.4/dist/leaflet.css" />
+    <script src="https://unpkg.com/leaflet@1.9.4/dist/leaflet.js"></script>
+
+    <!-- Chart.js for Weather Forecast Trends -->
+    <script src="https://cdn.jsdelivr.net/npm/chart.js"></script>
+
+    <style>
+        body {
+            font-family: 'Inter', sans-serif;
+            -webkit-tap-highlight-color: transparent;
+            user-select: none;
+            background-color: #0f172a;
+        }
+
+        /* Sepia Theme Custom Rules */
+        body.theme-sepia {
+            background-color: #e5d8b8;
+            color: #433422;
+        }
+        body.theme-sepia .app-container {
+            background-color: #f4ebd0 !important;
+            color: #433422 !important;
+        }
+        body.theme-sepia .card-bg {
+            background-color: #e8dcba !important;
+            border-color: #d3c19a !important;
+            color: #433422 !important;
+        }
+        body.theme-sepia .text-muted {
+            color: #786244 !important;
+        }
+        body.theme-sepia .nav-bg {
+            background-color: #e8dcba !important;
+            border-color: #d3c19a !important;
+        }
+
+        /* AMOLED Theme Custom Rules */
+        body.theme-amoled {
+            background-color: #000000;
+        }
+        body.theme-amoled .app-container {
+            background-color: #000000 !important;
+            color: #ffffff !important;
+        }
+        body.theme-amoled .card-bg {
+            background-color: #0d0d0d !important;
+            border-color: #222222 !important;
+            color: #f3f4f6 !important;
+        }
+
+        /* Scrollbar styling */
+        ::-webkit-scrollbar {
+            width: 4px;
+            height: 4px;
+        }
+        ::-webkit-scrollbar-track {
+            background: transparent;
+        }
+        ::-webkit-scrollbar-thumb {
+            background: rgba(156, 163, 175, 0.4);
+            border-radius: 9999px;
+        }
+
+        /* Floating Nav bar blur */
+        .glass-nav {
+            backdrop-filter: blur(16px);
+            -webkit-backdrop-filter: blur(16px);
+        }
+
+        /* Dynamic Canvas Sky Box */
+        #skyCanvas {
+            position: absolute;
+            top: 0;
+            left: 0;
+            width: 100%;
+            height: 100%;
+            pointer-events: none;
+            z-index: 0;
+        }
+
+        .safe-pb {
+            padding-bottom: calc(5rem + env(safe-area-inset-bottom, 16px));
+        }
+
+        .modal-animate {
+            animation: popIn 0.25s cubic-bezier(0.16, 1, 0.3, 1) forwards;
+        }
+        @keyframes popIn {
+            from { opacity: 0; transform: scale(0.95) translateY(10px); }
+            to { opacity: 1; transform: scale(1) translateY(0); }
+        }
+
+        /* Pulse animation for radar playback */
+        @keyframes radarPulse {
+            0% { box-shadow: 0 0 0 0 rgba(2, 132, 199, 0.4); }
+            70% { box-shadow: 0 0 0 10px rgba(2, 132, 199, 0); }
+            100% { box-shadow: 0 0 0 0 rgba(2, 132, 199, 0); }
+        }
+        .radar-active {
+            animation: radarPulse 2s infinite;
+        }
+    </style>
+</head>
+<body class="bg-slate-900 text-slate-100 min-h-screen flex justify-center items-start sm:py-4">
+
+    <!-- MAIN APP CONTAINER (Mobile centered max-w-520px container) -->
+    <div id="app" class="app-container w-full max-w-[520px] min-h-screen sm:min-h-[92vh] sm:rounded-3xl bg-slate-900 text-slate-100 flex flex-col relative shadow-2xl overflow-hidden border border-slate-800 transition-colors duration-300">
+        
+        <!-- TOP APP BAR -->
+        <header class="sticky top-0 z-30 px-5 pt-4 pb-3 flex items-center justify-between glass-nav border-b border-slate-800/80 bg-slate-900/80">
+            <div class="flex items-center space-x-3">
+                <div class="w-10 h-10 rounded-2xl bg-gradient-to-tr from-amber-400 to-sky-500 flex items-center justify-center text-white font-bold text-xl shadow-lg shadow-sky-500/20">
+                    <i class="fa-solid font-bold fa-sun"></i>
+                </div>
+                <div>
+                    <h1 class="font-extrabold text-lg tracking-tight leading-none bg-gradient-to-r from-amber-400 via-sky-400 to-indigo-400 bg-clip-text text-transparent">DiaClaro</h1>
+                    <p id="topDateStr" class="text-[11px] text-slate-400 font-medium">Carregando data...</p>
+                </div>
+            </div>
+            
+            <div class="flex items-center space-x-2">
+                <button onclick="toggleQuickAddModal()" title="Criar Rápido" class="w-9 h-9 rounded-xl bg-sky-500/10 text-sky-400 hover:bg-sky-500 hover:text-white flex items-center justify-center transition-all">
+                    <i class="fa-solid fa-bolt text-sm"></i>
+                </button>
+                <button onclick="switchTab('settings')" title="Configurações" class="w-9 h-9 rounded-xl bg-slate-800 hover:bg-slate-700 text-slate-300 flex items-center justify-center transition-all">
+                    <i class="fa-solid fa-gear text-sm"></i>
+                </button>
+            </div>
+        </header>
+
+        <!-- MAIN VIEWPORT CONTENT (Tabs render inside) -->
+        <main id="mainContent" class="flex-1 overflow-y-auto px-4 pt-4 safe-pb relative z-10">
+            <!-- Dynamic tab views injected here via JS -->
+        </main>
+
+        <!-- BOTTOM FLOATING NAVIGATION BAR -->
+        <nav class="fixed bottom-0 left-0 right-0 max-w-[520px] mx-auto z-40 px-3 pb-3 pt-2">
+            <div class="nav-bg bg-slate-900/90 glass-nav border border-slate-800/90 rounded-2xl p-1.5 flex items-center justify-around shadow-2xl">
+                <button onclick="switchTab('home')" id="nav-home" class="nav-btn flex flex-col items-center py-1.5 px-3 rounded-xl transition-all text-sky-400 font-semibold">
+                    <i class="fa-solid fa-house text-lg mb-0.5"></i>
+                    <span class="text-[10px]">Início</span>
+                </button>
+                <button onclick="switchTab('calendar')" id="nav-calendar" class="nav-btn flex flex-col items-center py-1.5 px-3 rounded-xl transition-all text-slate-400 hover:text-slate-200">
+                    <i class="fa-solid fa-calendar-days text-lg mb-0.5"></i>
+                    <span class="text-[10px]">Agenda</span>
+                </button>
+                <button onclick="switchTab('weather')" id="nav-weather" class="nav-btn flex flex-col items-center py-1.5 px-3 rounded-xl transition-all text-slate-400 hover:text-slate-200">
+                    <i class="fa-solid fa-cloud-sun-rain text-lg mb-0.5"></i>
+                    <span class="text-[10px]">Clima</span>
+                </button>
+                <button onclick="switchTab('tasks')" id="nav-tasks" class="nav-btn flex flex-col items-center py-1.5 px-3 rounded-xl transition-all text-slate-400 hover:text-slate-200">
+                    <i class="fa-solid fa-list-check text-lg mb-0.5"></i>
+                    <span class="text-[10px]">Tarefas</span>
+                </button>
+                <button onclick="switchTab('news')" id="nav-news" class="nav-btn flex flex-col items-center py-1.5 px-3 rounded-xl transition-all text-slate-400 hover:text-slate-200 relative">
+                    <span id="newsBadge" class="hidden absolute top-1 right-3 w-2 h-2 rounded-full bg-rose-500 animate-pulse"></span>
+                    <i class="fa-solid fa-newspaper text-lg mb-0.5"></i>
+                    <span class="text-[10px]">Jornal</span>
+                </button>
+            </div>
+        </nav>
+
+        <!-- GLOBAL MODAL OVERLAY -->
+        <div id="modalOverlay" class="fixed inset-0 z-50 bg-black/70 backdrop-blur-sm hidden flex items-end sm:items-center justify-center p-0 sm:p-4 transition-opacity">
+            <div id="modalContainer" class="modal-animate w-full max-w-[500px] bg-slate-900 border border-slate-800 rounded-t-3xl sm:rounded-3xl p-6 shadow-2xl max-h-[90vh] overflow-y-auto">
+                <!-- Dynamic Modal Content -->
+            </div>
+        </div>
+
+        <!-- TOAST NOTIFICATION BOX -->
+        <div id="toastBox" class="fixed top-16 left-1/2 -translate-x-1/2 z-50 transform -translate-y-10 opacity-0 pointer-events-none transition-all duration-300 w-[90%] max-w-[400px]">
+            <div id="toastContent" class="bg-slate-800 border border-slate-700 text-white text-xs sm:text-sm px-4 py-3 rounded-2xl shadow-xl flex items-center space-x-3">
+                <i id="toastIcon" class="fa-solid fa-circle-check text-emerald-400 text-lg"></i>
+                <span id="toastText" class="flex-1 font-medium">Mensagem de notificação</span>
+            </div>
+        </div>
+    </div>
+
+    <script>
+        /* ==========================================================================
+           1. APP DATA STATE & CONSTANTS
+           ========================================================================== */
+        const APP_STORAGE_KEY = 'DiaClaro_AppData_v2';
+        
+        let appState = {
+            user: {
+                name: 'Usuário',
+                state: 'SP',
+                city: 'São Paulo',
+                neighborhood: 'Centro',
+                tempUnit: 'C' // 'C' or 'F'
+            },
+            theme: 'dark', // dark, light, amoled, sepia
+            events: [
+                { id: '1', title: 'Consulta Médica', category: 'saude', date: getFormattedDate(0), time: '14:30', notes: 'Levar exames de sangue', alert: 30 },
+                { id: '2', title: 'Reunião de Alinhamento', category: 'trabalho', date: getFormattedDate(0), time: '16:00', notes: 'Discutir novas diretrizes', alert: 15 },
+                { id: '3', title: 'Aniversário da Ana', category: 'pessoal', date: getFormattedDate(2), time: '19:00', notes: 'Comprar presente', alert: 60 }
+            ],
+            tasks: [
+                { id: 't1', title: 'Revisar relatório financeiro', completed: false, priority: 'alta', date: getFormattedDate(0), category: 'trabalho' },
+                { id: 't2', title: 'Comprar frutas na feira', completed: true, priority: 'media', date: getFormattedDate(0), category: 'pessoal' },
+                { id: 't3', title: 'Pagar conta de luz', completed: false, priority: 'alta', date: getFormattedDate(1), category: 'financas' }
+            ],
+            lastNewsFetch: null,
+            newsCache: [],
+            weatherCache: null,
+            weatherCoords: { lat: -23.5505, lon: -46.6333, name: 'São Paulo' }
+        };
+
+        // Active tab tracker
+        let currentTab = 'home';
+        let calendarSelectedDate = new Date();
+        let calendarViewMode = 'month'; // month, week, day
+        let weatherMapInstance = null;
+        let radarAnimationTimer = null;
+        let skyCanvasAnimationId = null;
+
+        /* ==========================================================================
+           2. DATE & UTILITY HELPERS
+           ========================================================================== */
+        function getFormattedDate(offsetDays = 0) {
+            const d = new Date();
+            d.setDate(d.getDate() + offsetDays);
+            return d.toISOString().split('T')[0];
+        }
+
+        function loadSavedState() {
+            try {
+                const saved = localStorage.getItem(APP_STORAGE_KEY);
+                if (saved) {
+                    const parsed = JSON.parse(saved);
+                    appState = { ...appState, ...parsed };
+                }
+            } catch (e) {
+                console.error("Erro ao carregar estado do localStorage", e);
+            }
+        }
+
+        function saveState() {
+            try {
+                localStorage.setItem(APP_STORAGE_KEY, JSON.stringify(appState));
+            } catch (e) {
+                console.error("Erro ao salvar estado", e);
+            }
+        }
+
+        function showToast(text, type = 'success') {
+            const toast = document.getElementById('toastBox');
+            const toastText = document.getElementById('toastText');
+            const toastIcon = document.getElementById('toastIcon');
+
+            toastText.textContent = text;
+            if (type === 'success') {
+                toastIcon.className = 'fa-solid fa-circle-check text-emerald-400 text-lg';
+            } else if (type === 'error') {
+                toastIcon.className = 'fa-solid fa-triangle-exclamation text-rose-400 text-lg';
+            } else {
+                toastIcon.className = 'fa-solid fa-circle-info text-sky-400 text-lg';
+            }
+
+            toast.classList.remove('opacity-0', '-translate-y-10', 'pointer-events-none');
+            toast.classList.add('opacity-100', 'translate-y-0');
+
+            setTimeout(() => {
+                toast.classList.remove('opacity-100', 'translate-y-0');
+                toast.classList.add('opacity-0', '-translate-y-10', 'pointer-events-none');
+            }, 3000);
+        }
+
+        /* ==========================================================================
+           3. BRAZILIAN HOLIDAYS ENGINE (Easter Algorithm + Fixed National Days)
+           ========================================================================== */
+        function getEasterDate(year) {
+            const a = year % 19;
+            const b = Math.floor(year / 100);
+            const c = year % 100;
+            const d = Math.floor(b / 4);
+            const e = b % 4;
+            const f = Math.floor((b + 8) / 25);
+            const g = Math.floor((b - f + 1) / 3);
+            const h = (19 * a + b - d - g + 15) % 30;
+            const i = Math.floor(c / 4);
+            const k = c % 4;
+            const l = (32 + 2 * e + 2 * i - h - k) % 7;
+            const m = Math.floor((a + 11 * h + 22 * l) / 451);
+            const month = Math.floor((h + l - 7 * m + 114) / 31);
+            const day = ((h + l - 7 * m + 114) % 31) + 1;
+            return new Date(year, month - 1, day);
+        }
+
+        function getBrazilianHolidays(year) {
+            const holidays = [
+                { date: `${year}-01-01`, name: 'Confraternização Universal', type: 'nacional' },
+                { date: `${year}-04-21`, name: 'Tiradentes', type: 'nacional' },
+                { date: `${year}-05-01`, name: 'Dia do Trabalho', type: 'nacional' },
+                { date: `${year}-09-07`, name: 'Independência do Brasil', type: 'nacional' },
+                { date: `${year}-10-12`, name: 'Nossa Sra. Aparecida', type: 'nacional' },
+                { date: `${year}-11-02`, name: 'Finados', type: 'nacional' },
+                { date: `${year}-11-15`, name: 'Proclamação da República', type: 'nacional' },
+                { date: `${year}-11-20`, name: 'Dia da Consciência Negra', type: 'nacional' },
+                { date: `${year}-12-25`, name: 'Natal', type: 'nacional' },
+            ];
+
+            // Mobile/Easter derived dates
+            const easter = getEasterDate(year);
+            
+            // Carnaval (Tuesday, -47 days)
+            const carnaval = new Date(easter);
+            carnaval.setDate(easter.getDate() - 47);
+            holidays.push({ date: carnaval.toISOString().split('T')[0], name: 'Carnaval', type: 'facultativo' });
+
+            // Sexta-feira Santa (-2 days)
+            const sextaSanta = new Date(easter);
+            sextaSanta.setDate(easter.getDate() - 2);
+            holidays.push({ date: sextaSanta.toISOString().split('T')[0], name: 'Sexta-feira Santa', type: 'nacional' });
+
+            // Páscoa
+            holidays.push({ date: easter.toISOString().split('T')[0], name: 'Páscoa', type: 'religioso' });
+
+            // Corpus Christi (+60 days)
+            const corpusChristi = new Date(easter);
+            corpusChristi.setDate(easter.getDate() + 60);
+            holidays.push({ date: corpusChristi.toISOString().split('T')[0], name: 'Corpus Christi', type: 'facultativo' });
+
+            return holidays;
+        }
+
+        /* ==========================================================================
+           4. LIVE NEWS JOURNAL ENGINE
+           ========================================================================== */
+        const NEWS_FEEDS = {
+            principais: 'https://news.google.com/rss?hl=pt-BR&gl=BR&ceid=BR:pt-419',
+            brasil: 'https://news.google.com/rss/headlines/section/geo/BR?hl=pt-BR&gl=BR&ceid=BR:pt-419',
+            mundo: 'https://news.google.com/rss/headlines/section/topic/WORLD?hl=pt-BR&gl=BR&ceid=BR:pt-419',
+            economia: 'https://news.google.com/rss/headlines/section/topic/BUSINESS?hl=pt-BR&gl=BR&ceid=BR:pt-419',
+            esportes: 'https://news.google.com/rss/headlines/section/topic/SPORTS?hl=pt-BR&gl=BR&ceid=BR:pt-419',
+            tecnologia: 'https://news.google.com/rss/headlines/section/topic/TECHNOLOGY?hl=pt-BR&gl=BR&ceid=BR:pt-419'
+        };
+
+        async function fetchLiveNews(category = 'principais', forceRefresh = false) {
+            const feedUrl = NEWS_FEEDS[category] || NEWS_FEEDS.principais;
+            const rss2jsonUrl = `https://api.rss2json.com/v1/api.json?rss_url=${encodeURIComponent(feedUrl)}`;
+            
+            try {
+                // Try rss2json API first
+                const res = await fetch(rss2jsonUrl);
+                if (res.ok) {
+                    const data = await res.json();
+                    if (data.items && data.items.length > 0) {
+                        const parsedNews = data.items.map((item, idx) => ({
+                            id: item.guid || 'news-' + idx,
+                            title: item.title,
+                            link: item.link,
+                            pubDate: item.pubDate,
+                            source: item.author || extractSourceFromTitle(item.title) || 'Jornal Notícias',
+                            description: cleanHtmlText(item.description || item.content || 'Clique abaixo para ler a notícia completa diretamente na fonte oficial.'),
+                            category: category
+                        }));
+                        appState.newsCache = parsedNews;
+                        appState.lastNewsFetch = new Date().toLocaleTimeString('pt-BR', { hour: '2-digit', minute: '2-digit', day: '2-digit', month: '2-digit' });
+                        saveState();
+                        return parsedNews;
+                    }
+                }
+                throw new Error("rss2json falhou, tentando proxy alternativo...");
+            } catch (err) {
+                console.warn("Tentando proxy AllOrigins...", err);
+                try {
+                    // Fallback to AllOrigins XML Parser
+                    const proxyUrl = `https://api.allorigins.win/raw?url=${encodeURIComponent(feedUrl)}`;
+                    const resProxy = await fetch(proxyUrl);
+                    const xmlText = await resProxy.text();
+                    const parser = new DOMParser();
+                    const xmlDoc = parser.parseFromString(xmlText, "text/xml");
+                    const items = xmlDoc.querySelectorAll("item");
+                    
+                    if (items.length > 0) {
+                        const parsedNews = [];
+                        items.forEach((item, idx) => {
+                            if (idx < 20) {
+                                const title = item.querySelector("title")?.textContent || "Notícia em destaque";
+                                const link = item.querySelector("link")?.textContent || "#";
+                                const pubDate = item.querySelector("pubDate")?.textContent || new Date().toISOString();
+                                const desc = item.querySelector("description")?.textContent || "";
+                                parsedNews.push({
+                                    id: 'proxy-news-' + idx,
+                                    title: title,
+                                    link: link,
+                                    pubDate: pubDate,
+                                    source: extractSourceFromTitle(title) || 'Google News BR',
+                                    description: cleanHtmlText(desc || 'Acesse a matéria completa no portal do veículo jornalístico.'),
+                                    category: category
+                                });
+                            }
+                        });
+                        appState.newsCache = parsedNews;
+                        appState.lastNewsFetch = new Date().toLocaleTimeString('pt-BR', { hour: '2-digit', minute: '2-digit', day: '2-digit', month: '2-digit' });
+                        saveState();
+                        return parsedNews;
+                    }
+                } catch (fallbackErr) {
+                    console.error("Todas as fontes de RSS online falharam", fallbackErr);
+                }
+            }
+
+            // High-reliability static fallback news array if network fails completely
+            const offlineFallback = [
+                { id: 'off-1', title: 'Economia Brasileira demonstra crescimento constante e atrai novos investimentos', link: 'https://news.google.com', pubDate: new Date().toISOString(), source: 'Economia Brasil', description: 'Relatórios do mercado financeiro indicam otimismo e aceleração nos investimentos estratégicos.', category: category },
+                { id: 'off-2', title: 'Avanços em tecnologia de Inteligência Artificial impulsionam produtividade nacional', link: 'https://news.google.com', pubDate: new Date().toISOString(), source: 'Inovação & Tech', description: 'Empresas adotam novas ferramentas digitais para otimizar processos diários.', category: category },
+                { id: 'off-3', title: 'Previsão do tempo indica clima estável para as principais capitais no final de semana', link: 'https://news.google.com', pubDate: new Date().toISOString(), source: 'Clima & Notícias', description: 'Temperaturas agradáveis devem predominar na maior parte das regiões brasileiras.', category: category }
+            ];
+            appState.newsCache = offlineFallback;
+            appState.lastNewsFetch = 'Modo Offline - ' + new Date().toLocaleTimeString('pt-BR', { hour: '2-digit', minute: '2-digit' });
+            return offlineFallback;
+        }
+
+        function extractSourceFromTitle(title) {
+            if (!title) return 'Agência de Notícias';
+            const parts = title.split(' - ');
+            if (parts.length > 1) return parts[parts.length - 1];
+            return 'Jornal do Dia';
+        }
+
+        function cleanHtmlText(htmlStr) {
+            const tmp = document.createElement("DIV");
+            tmp.innerHTML = htmlStr;
+            return tmp.textContent || tmp.innerText || "";
+        }
+
+        /* ==========================================================================
+           5. OPEN-METEO WEATHER & LEAFLET RAIN RADAR
+           ========================================================================== */
+        async function fetchWeatherData(lat, lon) {
+            try {
+                const url = `https://api.open-meteo.com/v1/forecast?latitude=${lat}&longitude=${lon}&current_weather=true&hourly=temperature_2m,relative_humidity_2m,precipitation_probability,weathercode&daily=weathercode,temperature_2m_max,temperature_2m_min,precipitation_probability_max&timezone=auto`;
+                const res = await fetch(url);
+                if (res.ok) {
+                    const data = await res.json();
+                    appState.weatherCache = data;
+                    saveState();
+                    return data;
+                }
+            } catch (e) {
+                console.error("Erro ao buscar clima no Open-Meteo", e);
+            }
+            return null;
+        }
+
+        async function searchCityGeocoding(cityName) {
+            try {
+                const res = await fetch(`https://geocoding-api.open-meteo.com/v1/search?name=${encodeURIComponent(cityName)}&count=5&language=pt&format=json`);
+                if (res.ok) {
+                    const data = await res.json();
+                    return data.results || [];
+                }
+            } catch (e) {
+                console.error("Erro ao pesquisar cidade", e);
+            }
+            return [];
+        }
+
+        function getWeatherInterpretation(code) {
+            // WMO Weather interpretation codes
+            if (code === 0) return { label: 'Céu Limpo / Ensolarado', icon: 'fa-sun text-amber-400', sky: 'sun' };
+            if (code === 1 || code === 2) return { label: 'Parcialmente Nublado', icon: 'fa-cloud-sun text-sky-300', sky: 'cloud' };
+            if (code === 3) return { label: 'Encoberto', icon: 'fa-cloud text-slate-400', sky: 'cloud' };
+            if ([45, 48].includes(code)) return { label: 'Nevoeiro / Neblina', icon: 'fa-smog text-slate-300', sky: 'cloud' };
+            if ([51, 53, 55, 61, 63, 65, 80, 81].includes(code)) return { label: 'Chuva Moderada / Chuvisco', icon: 'fa-cloud-rain text-sky-400', sky: 'rain' };
+            if ([66, 67, 82].includes(code)) return { label: 'Chuva Forte / Temporal', icon: 'fa-cloud-showers-heavy text-blue-500', sky: 'heavy-rain' };
+            if ([71, 73, 75, 77, 85, 86].includes(code)) return { label: 'Neve / Geada', icon: 'fa-snowflake text-indigo-200', sky: 'snow' };
+            if ([95, 96, 99].includes(code)) return { label: 'Tempestade com Raios', icon: 'fa-cloud-bolt text-amber-300', sky: 'thunder' };
+            return { label: 'Tempo Instável', icon: 'fa-cloud text-sky-400', sky: 'cloud' };
+        }
+
+        /* Dynamic Sky Canvas Animation */
+        function initSkyCanvas(skyType = 'sun') {
+            const canvas = document.getElementById('skyCanvas');
+            if (!canvas) return;
+            const ctx = canvas.getContext('2d');
+            
+            if (skyCanvasAnimationId) cancelAnimationFrame(skyCanvasAnimationId);
+
+            canvas.width = canvas.parentElement.clientWidth;
+            canvas.height = canvas.parentElement.clientHeight;
+
+            let particles = [];
+            const particleCount = skyType.includes('rain') ? 60 : skyType === 'snow' ? 40 : skyType === 'sun' ? 12 : 20;
+
+            for (let i = 0; i < particleCount; i++) {
+                particles.push({
+                    x: Math.random() * canvas.width,
+                    y: Math.random() * canvas.height,
+                    speed: Math.random() * 3 + 2,
+                    length: Math.random() * 15 + 5,
+                    radius: Math.random() * 3 + 1,
+                    opacity: Math.random() * 0.7 + 0.3
+                });
+            }
+
+            function animateSky() {
+                ctx.clearRect(0, 0, canvas.width, canvas.height);
+
+                if (skyType === 'sun') {
+                    // Soft glowing sun rays particles
+                    particles.forEach(p => {
+                        ctx.beginPath();
+                        ctx.arc(p.x, p.y, p.radius * 2, 0, Math.PI * 2);
+                        ctx.fillStyle = `rgba(251, 191, 36, ${p.opacity * 0.25})`;
+                        ctx.fill();
+                        p.y -= p.speed * 0.2;
+                        if (p.y < 0) p.y = canvas.height;
+                    });
+                } else if (skyType.includes('rain')) {
+                    // Rain drops
+                    ctx.strokeStyle = 'rgba(56, 189, 248, 0.5)';
+                    ctx.lineWidth = 1.5;
+                    particles.forEach(p => {
+                        ctx.beginPath();
+                        ctx.moveTo(p.x, p.y);
+                        ctx.lineTo(p.x - p.speed * 0.3, p.y + p.length);
+                        ctx.stroke();
+                        p.y += p.speed * 2.5;
+                        p.x -= p.speed * 0.3;
+                        if (p.y > canvas.height) {
+                            p.y = -20;
+                            p.x = Math.random() * canvas.width;
+                        }
+                    });
+                } else if (skyType === 'snow') {
+                    // Gentle falling snow
+                    ctx.fillStyle = 'rgba(255, 255, 255, 0.8)';
+                    particles.forEach(p => {
+                        ctx.beginPath();
+                        ctx.arc(p.x, p.y, p.radius, 0, Math.PI * 2);
+                        ctx.fill();
+                        p.y += p.speed * 0.5;
+                        p.x += Math.sin(p.y * 0.05);
+                        if (p.y > canvas.height) {
+                            p.y = -10;
+                            p.x = Math.random() * canvas.width;
+                        }
+                    });
+                }
+
+                skyCanvasAnimationId = requestAnimationFrame(animateSky);
+            }
+
+            animateSky();
+        }
+
+        /* ==========================================================================
+           6. NLP QUICK CREATION & ICS CALENDAR EXPORT
+           ========================================================================== */
+        function parseQuickNLPInput(text) {
+            if (!text || text.trim() === '') return null;
+            
+            const lower = text.toLowerCase();
+            let date = getFormattedDate(0); // default today
+            let time = '09:00';
+            
+            if (lower.includes('amanhã') || lower.includes('amanha')) {
+                date = getFormattedDate(1);
+            } else if (lower.includes('depois de amanhã') || lower.includes('depois de amanha')) {
+                date = getFormattedDate(2);
+            }
+
+            // Match hour patterns like "às 14h", "14:30", "15h00"
+            const timeMatch = lower.match(/(?:às|as)?\s*(\d{1,2})(?:[:h](\d{2}))?\s*h?/);
+            if (timeMatch && timeMatch[1]) {
+                const hour = timeMatch[1].padStart(2, '0');
+                const min = timeMatch[2] ? timeMatch[2] : '00';
+                time = `${hour}:${min}`;
+            }
+
+            // Clean title by removing time/date keywords
+            let title = text
+                .replace(/amanhã|amanha|hoje|depois de amanhã|depois de amanha/gi, '')
+                .replace(/(?:às|as)?\s*\d{1,2}(?:[:h]\d{2})?\s*h?/gi, '')
+                .trim();
+
+            if (!title) title = 'Novo Compromisso';
+
+            return {
+                id: Date.now().toString(),
+                title: title.charAt(0).toUpperCase() + title.slice(1),
+                category: lower.includes('dentista') || lower.includes('médico') || lower.includes('exame') ? 'saude' : lower.includes('reunião') || lower.includes('trabalho') ? 'trabalho' : 'pessoal',
+                date: date,
+                time: time,
+                notes: 'Criado via Atalho Rápido',
+                alert: 15
+            };
+        }
+
+        function downloadICSFile(event) {
+            const startDateTime = event.date.replace(/-/g, '') + 'T' + event.time.replace(':', '') + '00';
+            const icsContent = [
+                'BEGIN:VCALENDAR',
+                'VERSION:2.0',
+                'PRODID:-//DiaClaro//BR',
+                'BEGIN:VEVENT',
+                `SUMMARY:${event.title}`,
+                `DESCRIPTION:${event.notes || 'Evento do DiaClaro'}`,
+                `DTSTART:${startDateTime}`,
+                `DTEND:${startDateTime}`,
+                'STATUS:CONFIRMED',
+                'END:VEVENT',
+                'END:VCALENDAR'
+            ].join('\r\n');
+
+            const blob = new Blob([icsContent], { type: 'text/calendar;charset=utf-8;' });
+            const link = document.createElement('a');
+            link.href = window.URL.createObjectURL(blob);
+            link.setAttribute('download', `${event.title.replace(/\s+/g, '_')}.ics`);
+            document.body.appendChild(link);
+            link.click();
+            document.body.removeChild(link);
+            showToast('Arquivo .ICS gerado! Abra para sincronizar com sua agenda.', 'success');
+        }
+
+        /* ==========================================================================
+           7. TAB RENDERERS
+           ========================================================================== */
+
+        // Tab Switcher
+        function switchTab(tabName) {
+            currentTab = tabName;
+            
+            // Update bottom nav styling
+            document.querySelectorAll('.nav-btn').forEach(btn => {
+                btn.className = 'nav-btn flex flex-col items-center py-1.5 px-3 rounded-xl transition-all text-slate-400 hover:text-slate-200';
+            });
+            const activeBtn = document.getElementById(`nav-${tabName}`);
+            if (activeBtn) {
+                activeBtn.className = 'nav-btn flex flex-col items-center py-1.5 px-3 rounded-xl transition-all text-sky-400 font-semibold bg-sky-500/10';
+            }
+
+            const container = document.getElementById('mainContent');
+            container.innerHTML = '';
+
+            if (tabName === 'home') renderHomeTab(container);
+            else if (tabName === 'calendar') renderCalendarTab(container);
+            else if (tabName === 'weather') renderWeatherTab(container);
+            else if (tabName === 'tasks') renderTasksTab(container);
+            else if (tabName === 'news') renderNewsTab(container);
+            else if (tabName === 'settings') renderSettingsTab(container);
+
+            // Save active tab preference
+            saveState();
+        }
+
+        /* --- DASHBOARD (HOME) TAB --- */
+        async function renderHomeTab(container) {
+            const todayStr = getFormattedDate(0);
+            const todayEvents = appState.events.filter(e => e.date === todayStr);
+            const pendingTasks = appState.tasks.filter(t => !t.completed);
+            
+            // Greeting based on hour
+            const hour = new Date().getHours();
+            const greeting = hour < 12 ? 'Bom dia' : hour < 18 ? 'Boa tarde' : 'Boa noite';
+
+            // Top Weather summary snippet
+            let weatherSummaryHTML = `
+                <div class="animate-pulse flex space-x-3 items-center">
+                    <div class="w-10 h-10 bg-slate-800 rounded-xl"></div>
+                    <div class="flex-1 space-y-2"><div class="h-4 bg-slate-800 rounded w-1/2"></div></div>
+                </div>
+            `;
+
+            container.innerHTML = `
+                <div class="space-y-4">
+                    <!-- SALUTATION HEADER CARD -->
+                    <div class="card-bg bg-gradient-to-br from-slate-800 to-slate-900 border border-slate-800 p-5 rounded-3xl relative overflow-hidden shadow-xl">
+                        <div class="relative z-10">
+                            <span class="text-xs font-semibold px-2.5 py-1 rounded-full bg-sky-500/20 text-sky-400 uppercase tracking-wider">Dashboard</span>
+                            <h2 class="text-2xl font-bold mt-2 text-white">${greeting}, ${appState.user.name}!</h2>
+                            <p class="text-xs text-slate-400 mt-0.5"><i class="fa-solid fa-location-dot text-rose-400 mr-1"></i>${appState.user.city}, ${appState.user.state}</p>
+                            
+                            <div id="homeWeatherBox" class="mt-4 pt-3 border-t border-slate-800">
+                                ${weatherSummaryHTML}
+                            </div>
+                        </div>
+                    </div>
+
+                    <!-- NLP QUICK INPUT BOX -->
+                    <div class="card-bg bg-slate-800/80 border border-slate-700/60 p-3.5 rounded-2xl flex items-center space-x-2 shadow-md">
+                        <i class="fa-solid fa-wand-magic-sparkles text-amber-400 text-lg ml-1"></i>
+                        <input id="quickNlpInput" type="text" placeholder="Ex: Dentista amanhã às 14h..." class="bg-transparent border-none outline-none text-xs sm:text-sm text-slate-100 placeholder-slate-400 flex-1">
+                        <button onclick="handleQuickNlpSubmit()" class="px-3 py-1.5 bg-sky-500 hover:bg-sky-600 text-white rounded-xl text-xs font-semibold shadow-md transition-all">
+                            Adicionar
+                        </button>
+                    </div>
+
+                    <!-- TODAY'S STATS SUMMARY -->
+                    <div class="grid grid-cols-2 gap-3">
+                        <div onclick="switchTab('calendar')" class="card-bg bg-slate-800/80 border border-slate-800 p-4 rounded-2xl cursor-pointer hover:border-sky-500/50 transition-all">
+                            <div class="flex items-center justify-between text-slate-400 text-xs mb-1">
+                                <span>Compromissos</span>
+                                <i class="fa-solid fa-calendar-check text-sky-400"></i>
+                            </div>
+                            <span class="text-2xl font-bold text-white">${todayEvents.length}</span>
+                            <span class="text-[11px] text-slate-400 block mt-0.5">agendados para hoje</span>
+                        </div>
+                        <div onclick="switchTab('tasks')" class="card-bg bg-slate-800/80 border border-slate-800 p-4 rounded-2xl cursor-pointer hover:border-emerald-500/50 transition-all">
+                            <div class="flex items-center justify-between text-slate-400 text-xs mb-1">
+                                <span>Tarefas</span>
+                                <i class="fa-solid fa-list-check text-emerald-400"></i>
+                            </div>
+                            <span class="text-2xl font-bold text-white">${pendingTasks.length}</span>
+                            <span class="text-[11px] text-slate-400 block mt-0.5">pendentes</span>
+                        </div>
+                    </div>
+
+                    <!-- TODAY'S AGENDA PREVIEW -->
+                    <div class="card-bg bg-slate-800/80 border border-slate-800 p-4 rounded-2xl">
+                        <div class="flex items-center justify-between mb-3">
+                            <h3 class="font-bold text-sm text-white flex items-center">
+                                <i class="fa-solid fa-clock text-amber-400 mr-2"></i>Agenda de Hoje
+                            </h3>
+                            <button onclick="openNewEventModal()" class="text-xs text-sky-400 font-semibold hover:underline">+ Novo</button>
+                        </div>
+                        
+                        ${todayEvents.length === 0 ? `
+                            <div class="text-center py-6 text-slate-500 text-xs">
+                                <i class="fa-solid fa-calendar-xmark text-2xl mb-2 text-slate-600"></i>
+                                <p>Nenhum compromisso marcado para hoje.</p>
+                            </div>
+                        ` : `
+                            <div class="space-y-2">
+                                ${todayEvents.map(ev => `
+                                    <div class="p-3 bg-slate-900/60 border border-slate-800 rounded-xl flex items-center justify-between">
+                                        <div class="flex items-center space-x-3">
+                                            <div class="w-2 h-8 rounded-full ${ev.category === 'saude' ? 'bg-rose-500' : ev.category === 'trabalho' ? 'bg-sky-500' : 'bg-emerald-500'}"></div>
+                                            <div>
+                                                <h4 class="font-semibold text-xs text-slate-200">${ev.title}</h4>
+                                                <p class="text-[11px] text-slate-400"><i class="fa-regular fa-clock mr-1"></i>${ev.time}</p>
+                                            </div>
+                                        </div>
+                                        <button onclick="downloadICSFile(${JSON.stringify(ev).replace(/"/g, '&quot;')})" title="Sincronizar no Celular (.ICS)" class="text-slate-400 hover:text-sky-400 p-2 text-xs">
+                                            <i class="fa-solid fa-file-export"></i>
+                                        </button>
+                                    </div>
+                                `).join('')}
+                            </div>
+                        `}
+                    </div>
+
+                    <!-- TOP NEWS HIGHLIGHT PREVIEW -->
+                    <div class="card-bg bg-slate-800/80 border border-slate-800 p-4 rounded-2xl">
+                        <div class="flex items-center justify-between mb-3">
+                            <h3 class="font-bold text-sm text-white flex items-center">
+                                <i class="fa-solid fa-newspaper text-rose-400 mr-2"></i>Jornal em Destaque
+                            </h3>
+                            <button onclick="switchTab('news')" class="text-xs text-sky-400 font-semibold hover:underline">Ver Todas &rarr;</button>
+                        </div>
+                        <div id="homeNewsHighlight" class="text-xs text-slate-400">
+                            Carregando manchetes do dia...
+                        </div>
+                    </div>
+                </div>
+            `;
+
+            // Fetch & render dynamic weather for header
+            fetchWeatherData(appState.weatherCoords.lat, appState.weatherCoords.lon).then(wData => {
+                const box = document.getElementById('homeWeatherBox');
+                if (!box) return;
+                if (wData && wData.current_weather) {
+                    const cw = wData.current_weather;
+                    const info = getWeatherInterpretation(cw.weathercode);
+                    box.innerHTML = `
+                        <div class="flex items-center justify-between">
+                            <div class="flex items-center space-x-3">
+                                <i class="fa-solid ${info.icon} text-2xl"></i>
+                                <div>
+                                    <span class="text-2xl font-extrabold text-white">${Math.round(cw.temperature)}°${appState.user.tempUnit}</span>
+                                    <p class="text-[11px] text-slate-300">${info.label}</p>
+                                </div>
+                            </div>
+                            <div class="text-right text-[11px] text-slate-400">
+                                <p><i class="fa-solid fa-wind mr-1"></i>Vento: ${cw.windspeed} km/h</p>
+                                <button onclick="switchTab('weather')" class="text-sky-400 hover:underline mt-1 inline-block">Ver Radar RainViewer &rarr;</button>
+                            </div>
+                        </div>
+                    `;
+                }
+            });
+
+            // Fetch & render top news highlight
+            fetchLiveNews('principais').then(newsItems => {
+                const box = document.getElementById('homeNewsHighlight');
+                if (!box) return;
+                if (newsItems && newsItems.length > 0) {
+                    const top = newsItems[0];
+                    box.innerHTML = `
+                        <div onclick="openNewsModal(${JSON.stringify(top).replace(/"/g, '&quot;')})" class="cursor-pointer group">
+                            <span class="text-[10px] font-semibold text-rose-400 uppercase tracking-wider">${top.source}</span>
+                            <h4 class="font-semibold text-xs text-slate-200 group-hover:text-sky-400 transition-colors mt-0.5 line-clamp-2">${top.title}</h4>
+                            <p class="text-[11px] text-slate-400 mt-1 line-clamp-2">${top.description}</p>
+                        </div>
+                    `;
+                }
+            });
+        }
+
+        function handleQuickNlpSubmit() {
+            const input = document.getElementById('quickNlpInput');
+            if (!input || !input.value.trim()) return;
+            
+            const newEv = parseQuickNLPInput(input.value.trim());
+            if (newEv) {
+                appState.events.push(newEv);
+                saveState();
+                input.value = '';
+                showToast(`Evento "${newEv.title}" agendado com sucesso!`, 'success');
+                if (currentTab === 'home') renderHomeTab(document.getElementById('mainContent'));
+                else if (currentTab === 'calendar') renderCalendarTab(document.getElementById('mainContent'));
+            }
+        }
+
+        /* --- AGENDA & CALENDAR TAB --- */
+        function renderCalendarTab(container) {
+            const currentYear = calendarSelectedDate.getFullYear();
+            const currentMonth = calendarSelectedDate.getMonth();
+            const holidays = getBrazilianHolidays(currentYear);
+
+            const monthNames = ["Janeiro", "Fevereiro", "Março", "Abril", "Maio", "Junho", "Julho", "Agosto", "Setembro", "Outubro", "Novembro", "Dezembro"];
+
+            container.innerHTML = `
+                <div class="space-y-4">
+                    <!-- CALENDAR HEADER TOOLBAR -->
+                    <div class="card-bg bg-slate-800/80 border border-slate-800 p-4 rounded-2xl flex items-center justify-between">
+                        <div>
+                            <h2 class="text-lg font-bold text-white">${monthNames[currentMonth]} ${currentYear}</h2>
+                            <p class="text-xs text-slate-400">Modo: Mês completo</p>
+                        </div>
+                        <div class="flex items-center space-x-1">
+                            <button onclick="changeCalendarMonth(-1)" class="w-8 h-8 bg-slate-700 hover:bg-slate-600 text-white rounded-lg text-xs"><i class="fa-solid fa-chevron-left"></i></button>
+                            <button onclick="calendarSelectedDate = new Date(); switchTab('calendar')" class="px-2.5 py-1.5 bg-sky-500/20 text-sky-400 hover:bg-sky-500 hover:text-white rounded-lg text-xs font-semibold">Hoje</button>
+                            <button onclick="changeCalendarMonth(1)" class="w-8 h-8 bg-slate-700 hover:bg-slate-600 text-white rounded-lg text-xs"><i class="fa-solid fa-chevron-right"></i></button>
+                        </div>
+                    </div>
+
+                    <!-- MONTH GRID -->
+                    <div class="card-bg bg-slate-800/80 border border-slate-800 p-3 rounded-2xl">
+                        <div class="grid grid-cols-7 text-center font-bold text-[11px] text-slate-400 mb-2">
+                            <span>Dom</span><span>Seg</span><span>Ter</span><span>Qua</span><span>Qui</span><span>Sex</span><span>Sáb</span>
+                        </div>
+                        <div id="calendarDaysGrid" class="grid grid-cols-7 gap-1 text-center text-xs">
+                            <!-- Injected days -->
+                        </div>
+                    </div>
+
+                    <!-- HOLIDAYS & EVENTS FOR SELECTED DAY -->
+                    <div class="card-bg bg-slate-800/80 border border-slate-800 p-4 rounded-2xl">
+                        <div class="flex items-center justify-between mb-3">
+                            <h3 class="font-bold text-sm text-white">Compromissos & Feriados (${calendarSelectedDate.toLocaleDateString('pt-BR')})</h3>
+                            <button onclick="openNewEventModal('${calendarSelectedDate.toISOString().split('T')[0]}')" class="px-3 py-1 bg-sky-500 text-white text-xs font-semibold rounded-lg hover:bg-sky-600">
+                                + Novo Evento
+                            </button>
+                        </div>
+                        <div id="dayEventsList" class="space-y-2">
+                            <!-- Events list for selected date -->
+                        </div>
+                    </div>
+                </div>
+            `;
+
+            renderCalendarDaysGrid(currentYear, currentMonth, holidays);
+            renderSelectedDayEvents(holidays);
+        }
+
+        function changeCalendarMonth(delta) {
+            calendarSelectedDate.setMonth(calendarSelectedDate.getMonth() + delta);
+            switchTab('calendar');
+        }
+
+        function renderCalendarDaysGrid(year, month, holidays) {
+            const grid = document.getElementById('calendarDaysGrid');
+            if (!grid) return;
+
+            const firstDayIndex = new Date(year, month, 1).getDay();
+            const totalDays = new Date(year, month + 1, 0).getDate();
+            const todayStr = getFormattedDate(0);
+            const selectedStr = calendarSelectedDate.toISOString().split('T')[0];
+
+            let html = '';
+
+            // Empty padding slots
+            for (let i = 0; i < firstDayIndex; i++) {
+                html += `<div class="h-10 rounded-lg opacity-20"></div>`;
+            }
+
+            for (let day = 1; day <= totalDays; day++) {
+                const dateObj = new Date(year, month, day);
+                const dateStr = dateObj.toISOString().split('T')[0];
+                const isToday = dateStr === todayStr;
+                const isSelected = dateStr === selectedStr;
+
+                const hasEvents = appState.events.some(e => e.date === dateStr);
+                const holiday = holidays.find(h => h.date === dateStr);
+
+                let dayClass = 'bg-slate-900/50 hover:bg-slate-700/50 text-slate-300';
+                if (isSelected) dayClass = 'bg-sky-500 text-white font-bold ring-2 ring-sky-300';
+                else if (isToday) dayClass = 'bg-amber-500/20 text-amber-400 font-bold border border-amber-500/40';
+
+                html += `
+                    <div onclick="selectCalendarDate('${dateStr}')" class="h-10 rounded-xl flex flex-col items-center justify-center cursor-pointer transition-all relative ${dayClass}">
+                        <span>${day}</span>
+                        <div class="flex space-x-0.5 mt-0.5">
+                            ${hasEvents ? `<span class="w-1.5 h-1.5 rounded-full ${isSelected ? 'bg-white' : 'bg-sky-400'}"></span>` : ''}
+                            ${holiday ? `<span class="w-1.5 h-1.5 rounded-full ${isSelected ? 'bg-yellow-200' : 'bg-rose-400'}" title="${holiday.name}"></span>` : ''}
+                        </div>
+                    </div>
+                `;
+            }
+
+            grid.innerHTML = html;
+        }
+
+        function selectCalendarDate(dateStr) {
+            calendarSelectedDate = new Date(dateStr + 'T12:00:00');
+            switchTab('calendar');
+        }
+
+        function renderSelectedDayEvents(holidays) {
+            const list = document.getElementById('dayEventsList');
+            if (!list) return;
+
+            const selectedStr = calendarSelectedDate.toISOString().split('T')[0];
+            const dayEvents = appState.events.filter(e => e.date === selectedStr);
+            const holiday = holidays.find(h => h.date === selectedStr);
+
+            let html = '';
+
+            if (holiday) {
+                html += `
+                    <div class="p-3 bg-amber-500/10 border border-amber-500/30 rounded-xl flex items-center justify-between text-amber-300 text-xs">
+                        <div class="flex items-center space-x-2">
+                            <i class="fa-solid fa-flag text-amber-400"></i>
+                            <span class="font-bold">${holiday.name}</span>
+                        </div>
+                        <span class="text-[10px] bg-amber-500/20 px-2 py-0.5 rounded uppercase font-semibold">${holiday.type}</span>
+                    </div>
+                `;
+            }
+
+            if (dayEvents.length === 0 && !holiday) {
+                html += `<p class="text-slate-500 text-xs text-center py-4">Nenhum evento registrado nesta data.</p>`;
+            } else {
+                dayEvents.forEach(ev => {
+                    html += `
+                        <div class="p-3 bg-slate-900/60 border border-slate-800 rounded-xl flex items-center justify-between">
+                            <div class="flex items-center space-x-3">
+                                <div class="w-2 h-8 rounded-full ${ev.category === 'saude' ? 'bg-rose-500' : ev.category === 'trabalho' ? 'bg-sky-500' : 'bg-emerald-500'}"></div>
+                                <div>
+                                    <h4 class="font-semibold text-xs text-slate-200">${ev.title}</h4>
+                                    <p class="text-[11px] text-slate-400"><i class="fa-regular fa-clock mr-1"></i>${ev.time} ${ev.notes ? '• ' + ev.notes : ''}</p>
+                                </div>
+                            </div>
+                            <div class="flex items-center space-x-1">
+                                <button onclick="downloadICSFile(${JSON.stringify(ev).replace(/"/g, '&quot;')})" title="Baixar .ICS" class="p-1.5 text-slate-400 hover:text-sky-400 text-xs">
+                                    <i class="fa-solid fa-download"></i>
+                                </button>
+                                <button onclick="deleteEvent('${ev.id}')" title="Excluir" class="p-1.5 text-slate-400 hover:text-rose-400 text-xs">
+                                    <i class="fa-solid fa-trash"></i>
+                                </button>
+                            </div>
+                        </div>
+                    `;
+                });
+            }
+
+            list.innerHTML = html;
+        }
+
+        function deleteEvent(id) {
+            appState.events = appState.events.filter(e => e.id !== id);
+            saveState();
+            showToast('Evento removido com sucesso!', 'info');
+            switchTab('calendar');
+        }
+
+        /* --- CLIMA & RADAR TAB --- */
+        async function renderWeatherTab(container) {
+            container.innerHTML = `
+                <div class="space-y-4">
+                    <!-- WEATHER SEARCH & GPS BAR -->
+                    <div class="card-bg bg-slate-800/80 border border-slate-800 p-3 rounded-2xl flex items-center space-x-2">
+                        <i class="fa-solid fa-magnifying-glass text-slate-400 text-xs ml-1"></i>
+                        <input id="citySearchInput" type="text" placeholder="Buscar cidade (ex: Rio de Janeiro)..." class="bg-transparent border-none outline-none text-xs text-slate-100 placeholder-slate-400 flex-1">
+                        <button onclick="handleCitySearch()" class="px-3 py-1 bg-sky-500 text-white rounded-xl text-xs font-semibold hover:bg-sky-600">Buscar</button>
+                        <button onclick="getUserGeolocation()" title="Usar meu GPS" class="p-2 bg-slate-700 text-sky-400 rounded-xl hover:bg-slate-600"><i class="fa-solid fa-location-crosshairs"></i></button>
+                    </div>
+
+                    <!-- CURRENT WEATHER HERO CANVAS CARD -->
+                    <div class="card-bg bg-gradient-to-br from-sky-900/60 via-slate-900 to-indigo-950/80 border border-sky-800/50 p-5 rounded-3xl relative overflow-hidden shadow-2xl">
+                        <canvas id="skyCanvas"></canvas>
+                        <div id="weatherHeroContent" class="relative z-10">
+                            <div class="text-center py-6 text-slate-400 text-xs">Carregando dados meteorológicos...</div>
+                        </div>
+                    </div>
+
+                    <!-- LEAFLET RAIN RADAR MAP WITH ANIMATION PLAYBACK -->
+                    <div class="card-bg bg-slate-800/80 border border-slate-800 p-4 rounded-2xl">
+                        <div class="flex items-center justify-between mb-2">
+                            <h3 class="font-bold text-sm text-white flex items-center">
+                                <i class="fa-solid fa-radar text-sky-400 mr-2"></i>Radar de Chuva em Tempo Real
+                            </h3>
+                            <button onclick="toggleRadarPlayback()" id="radarPlayBtn" class="px-2.5 py-1 bg-sky-500 text-white text-xs font-semibold rounded-lg flex items-center space-x-1">
+                                <i class="fa-solid fa-play text-[10px]"></i>
+                                <span>Play</span>
+                            </button>
+                        </div>
+                        <div id="radarMap" class="w-full h-56 rounded-xl border border-slate-700 z-10 relative"></div>
+                        <p class="text-[10px] text-slate-400 mt-2 text-center">Camada de precipitação RainViewer em alta precisão.</p>
+                    </div>
+
+                    <!-- 7-DAY FORECAST CAROUSEL -->
+                    <div class="card-bg bg-slate-800/80 border border-slate-800 p-4 rounded-2xl">
+                        <h3 class="font-bold text-sm text-white mb-3 flex items-center">
+                            <i class="fa-solid fa-calendar-week text-amber-400 mr-2"></i>Previsão para 7 Dias
+                        </h3>
+                        <div id="weeklyForecastList" class="space-y-2">
+                            <!-- 7 days list -->
+                        </div>
+                    </div>
+                </div>
+            `;
+
+            // Load Open-Meteo weather data
+            const wData = await fetchWeatherData(appState.weatherCoords.lat, appState.weatherCoords.lon);
+            if (wData) {
+                renderWeatherHero(wData);
+                renderWeeklyForecast(wData);
+            }
+
+            // Initialize Leaflet Radar Map
+            initRadarMap();
+        }
+
+        function renderWeatherHero(wData) {
+            const hero = document.getElementById('weatherHeroContent');
+            if (!hero || !wData.current_weather) return;
+
+            const cw = wData.current_weather;
+            const info = getWeatherInterpretation(cw.weathercode);
+
+            hero.innerHTML = `
+                <div class="flex items-center justify-between">
+                    <div>
+                        <span class="text-xs font-bold text-sky-400 uppercase tracking-widest"><i class="fa-solid fa-location-dot mr-1"></i>${appState.weatherCoords.name}</span>
+                        <h2 class="text-5xl font-extrabold text-white mt-1">${Math.round(cw.temperature)}°<span class="text-2xl font-normal text-sky-300">${appState.user.tempUnit}</span></h2>
+                        <p class="text-sm font-semibold text-slate-200 mt-1">${info.label}</p>
+                    </div>
+                    <div class="text-5xl">
+                        <i class="fa-solid ${info.icon}"></i>
+                    </div>
+                </div>
+                
+                <div class="grid grid-cols-3 gap-2 mt-6 pt-4 border-t border-slate-700/60 text-center text-xs">
+                    <div class="bg-slate-900/50 p-2 rounded-xl">
+                        <span class="text-slate-400 block text-[10px]">Vento</span>
+                        <span class="font-bold text-slate-200">${cw.windspeed} km/h</span>
+                    </div>
+                    <div class="bg-slate-900/50 p-2 rounded-xl">
+                        <span class="text-slate-400 block text-[10px]">Direção</span>
+                        <span class="font-bold text-slate-200">${cw.winddirection}°</span>
+                    </div>
+                    <div class="bg-slate-900/50 p-2 rounded-xl">
+                        <span class="text-slate-400 block text-[10px]">Código WMO</span>
+                        <span class="font-bold text-slate-200">#${cw.weathercode}</span>
+                    </div>
+                </div>
+            `;
+
+            initSkyCanvas(info.sky);
+        }
+
+        function renderWeeklyForecast(wData) {
+            const list = document.getElementById('weeklyForecastList');
+            if (!list || !wData.daily) return;
+
+            const daily = wData.daily;
+            let html = '';
+
+            for (let i = 0; i < daily.time.length; i++) {
+                const dateObj = new Date(daily.time[i] + 'T12:00:00');
+                const dayName = i === 0 ? 'Hoje' : dateObj.toLocaleDateString('pt-BR', { weekday: 'short' });
+                const code = daily.weathercode[i];
+                const info = getWeatherInterpretation(code);
+                const maxTemp = Math.round(daily.temperature_2m_max[i]);
+                const minTemp = Math.round(daily.temperature_2m_min[i]);
+                const rainProb = daily.precipitation_probability_max ? daily.precipitation_probability_max[i] : 0;
+
+                html += `
+                    <div class="p-3 bg-slate-900/50 border border-slate-800 rounded-xl flex items-center justify-between text-xs">
+                        <div class="w-20 font-semibold text-slate-300 capitalize">${dayName}</div>
+                        <div class="flex items-center space-x-2 w-32">
+                            <i class="fa-solid ${info.icon} text-base"></i>
+                            <span class="text-slate-400 text-[11px] truncate">${info.label}</span>
+                        </div>
+                        <div class="flex items-center space-x-3 text-right">
+                            <span class="text-sky-400 text-[11px]"><i class="fa-solid fa-droplet mr-0.5"></i>${rainProb}%</span>
+                            <span class="font-bold text-white">${maxTemp}°</span>
+                            <span class="text-slate-500">${minTemp}°</span>
+                        </div>
+                    </div>
+                `;
+            }
+
+            list.innerHTML = html;
+        }
+
+        /* Leaflet RainRadar Initialization */
+        function initRadarMap() {
+            if (weatherMapInstance) {
+                weatherMapInstance.remove();
+            }
+
+            const lat = appState.weatherCoords.lat;
+            const lon = appState.weatherCoords.lon;
+
+            weatherMapInstance = L.map('radarMap', { zoomControl: false }).setView([lat, lon], 7);
+
+            // OpenStreetMap base layer
+            L.tileLayer('https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png', {
+                maxZoom: 12,
+                attribution: '&copy; OpenStreetMap'
+            }).addTo(weatherMapInstance);
+
+            // Add marker for active city
+            L.marker([lat, lon]).addTo(weatherMapInstance)
+                .bindPopup(appState.weatherCoords.name)
+                .openPopup();
+
+            // Fetch RainViewer radar timestamps layer
+            fetch('https://api.rainviewer.com/public/weather-maps.json')
+                .then(res => res.json())
+                .then(data => {
+                    if (data && data.radar && data.radar.past && data.radar.past.length > 0) {
+                        const lastFrame = data.radar.past[data.radar.past.length - 1];
+                        const tileUrl = `https://tile.rainviewer.com/${lastFrame.time}/256/{z}/{x}/{y}/2/1_1.png`;
+                        L.tileLayer(tileUrl, { opacity: 0.6, zIndex: 100 }).addTo(weatherMapInstance);
+                    }
+                })
+                .catch(err => console.error("Erro no radar RainViewer", err));
+        }
+
+        async function handleCitySearch() {
+            const input = document.getElementById('citySearchInput');
+            if (!input || !input.value.trim()) return;
+
+            const results = await searchCityGeocoding(input.value.trim());
+            if (results && results.length > 0) {
+                const first = results[0];
+                appState.weatherCoords = {
+                    lat: first.latitude,
+                    lon: first.longitude,
+                    name: `${first.name}, ${first.admin1 || first.country}`
+                };
+                appState.user.city = first.name;
+                saveState();
+                showToast(`Clima atualizado para ${first.name}!`, 'success');
+                switchTab('weather');
+            } else {
+                showToast('Cidade não encontrada.', 'error');
+            }
+        }
+
+        function getUserGeolocation() {
+            if (navigator.geolocation) {
+                navigator.geolocation.getCurrentPosition(
+                    async (pos) => {
+                        appState.weatherCoords.lat = pos.coords.latitude;
+                        appState.weatherCoords.lon = pos.coords.longitude;
+                        appState.weatherCoords.name = 'Sua Localização GPS';
+                        saveState();
+                        showToast('Localização obtida via GPS!', 'success');
+                        switchTab('weather');
+                    },
+                    (err) => {
+                        showToast('Permissão de GPS negada.', 'error');
+                    }
+                );
+            }
+        }
+
+        /* --- TAREFAS TAB --- */
+        function renderTasksTab(container) {
+            const totalTasks = appState.tasks.length;
+            const completedCount = appState.tasks.filter(t => t.completed).length;
+            const pct = totalTasks > 0 ? Math.round((completedCount / totalTasks) * 100) : 0;
+
+            container.innerHTML = `
+                <div class="space-y-4">
+                    <!-- PROGRESS SUMMARY CARD -->
+                    <div class="card-bg bg-slate-800/80 border border-slate-800 p-5 rounded-2xl">
+                        <div class="flex items-center justify-between mb-2">
+                            <div>
+                                <h2 class="font-bold text-white text-base">Progresso das Tarefas</h2>
+                                <p class="text-xs text-slate-400">${completedCount} de ${totalTasks} concluídas</p>
+                            </div>
+                            <span class="text-xl font-extrabold text-emerald-400">${pct}%</span>
+                        </div>
+                        <div class="w-full h-3 bg-slate-900 rounded-full overflow-hidden">
+                            <div class="h-full bg-gradient-to-r from-emerald-500 to-sky-500 transition-all duration-500" style="width: ${pct}%"></div>
+                        </div>
+                    </div>
+
+                    <!-- NEW TASK INPUT BAR -->
+                    <div class="card-bg bg-slate-800/80 border border-slate-800 p-3 rounded-2xl flex items-center space-x-2">
+                        <input id="newTaskInput" type="text" placeholder="Adicionar nova tarefa..." class="bg-transparent border-none outline-none text-xs text-slate-100 placeholder-slate-400 flex-1 px-2">
+                        <select id="newTaskPriority" class="bg-slate-900 text-xs text-slate-300 rounded-xl px-2 py-1 border border-slate-700 outline-none">
+                            <option value="baixa">Baixa</option>
+                            <option value="media" selected>Média</option>
+                            <option value="alta">Alta</option>
+                        </select>
+                        <button onclick="handleAddTask()" class="px-3 py-1.5 bg-emerald-500 hover:bg-emerald-600 text-white font-semibold rounded-xl text-xs">
+                            + Criar
+                        </button>
+                    </div>
+
+                    <!-- TASK LIST -->
+                    <div class="card-bg bg-slate-800/80 border border-slate-800 p-4 rounded-2xl">
+                        <div id="tasksList" class="space-y-2">
+                            ${appState.tasks.length === 0 ? `
+                                <p class="text-slate-500 text-xs text-center py-6">Nenhuma tarefa cadastrada. Adicione acima!</p>
+                            ` : appState.tasks.map(t => `
+                                <div class="p-3 bg-slate-900/60 border border-slate-800 rounded-xl flex items-center justify-between transition-all ${t.completed ? 'opacity-50' : ''}">
+                                    <div class="flex items-center space-x-3 flex-1">
+                                        <button onclick="toggleTaskCompletion('${t.id}')" class="w-6 h-6 rounded-lg border ${t.completed ? 'bg-emerald-500 border-emerald-500 text-white' : 'border-slate-600 text-transparent'} flex items-center justify-center text-xs transition-colors">
+                                            <i class="fa-solid fa-check"></i>
+                                        </button>
+                                        <span class="text-xs ${t.completed ? 'line-through text-slate-500' : 'text-slate-200'} font-medium">${t.title}</span>
+                                    </div>
+                                    <div class="flex items-center space-x-2">
+                                        <span class="text-[9px] font-bold px-2 py-0.5 rounded uppercase ${t.priority === 'alta' ? 'bg-rose-500/20 text-rose-400 border border-rose-500/30' : t.priority === 'media' ? 'bg-amber-500/20 text-amber-400' : 'bg-slate-700 text-slate-300'}">${t.priority}</span>
+                                        <button onclick="deleteTask('${t.id}')" class="p-1 text-slate-500 hover:text-rose-400 text-xs">
+                                            <i class="fa-solid fa-trash"></i>
+                                        </button>
+                                    </div>
+                                </div>
+                            `).join('')}
+                        </div>
+                    </div>
+                </div>
+            `;
+        }
+
+        function handleAddTask() {
+            const input = document.getElementById('newTaskInput');
+            const priority = document.getElementById('newTaskPriority');
+            if (!input || !input.value.trim()) return;
+
+            appState.tasks.push({
+                id: 't-' + Date.now(),
+                title: input.value.trim(),
+                completed: false,
+                priority: priority ? priority.value : 'media',
+                date: getFormattedDate(0),
+                category: 'geral'
+            });
+
+            saveState();
+            showToast('Tarefa adicionada!', 'success');
+            switchTab('tasks');
+        }
+
+        function toggleTaskCompletion(id) {
+            const task = appState.tasks.find(t => t.id === id);
+            if (task) {
+                task.completed = !task.completed;
+                saveState();
+                switchTab('tasks');
+            }
+        }
+
+        function deleteTask(id) {
+            appState.tasks = appState.tasks.filter(t => t.id !== id);
+            saveState();
+            switchTab('tasks');
+        }
+
+        /* --- JORNAL DE NOTÍCIAS TAB --- */
+        async function renderNewsTab(container) {
+            container.innerHTML = `
+                <div class="space-y-4">
+                    <!-- NEWS SEARCH & REFRESH BAR -->
+                    <div class="card-bg bg-slate-800/80 border border-slate-800 p-3 rounded-2xl space-y-2">
+                        <div class="flex items-center space-x-2">
+                            <div class="flex-1 bg-slate-900 border border-slate-700 rounded-xl px-3 py-1.5 flex items-center space-x-2">
+                                <i class="fa-solid fa-magnifying-glass text-slate-400 text-xs"></i>
+                                <input id="newsSearchInput" onkeyup="filterNewsByKeyword()" type="text" placeholder="Filtrar notícias por palavra..." class="bg-transparent border-none outline-none text-xs text-slate-100 placeholder-slate-400 w-full">
+                            </div>
+                            <button onclick="refreshLiveNews()" title="Atualizar Notícias" class="px-3 py-2 bg-sky-500 hover:bg-sky-600 text-white rounded-xl text-xs font-semibold flex items-center space-x-1 shadow-md">
+                                <i class="fa-solid fa-arrows-rotate text-xs"></i>
+                                <span class="hidden sm:inline">Atualizar</span>
+                            </button>
+                        </div>
+                        <div class="flex items-center justify-between text-[11px] text-slate-400 px-1">
+                            <span>Última atualização: <strong id="lastUpdateStr">${appState.lastNewsFetch || 'Agorinha'}</strong></span>
+                            <span class="text-emerald-400"><i class="fa-solid fa-wifi mr-1"></i>Feeds RSS Ao Vivo</span>
+                        </div>
+                    </div>
+
+                    <!-- CATEGORY TABS -->
+                    <div class="flex space-x-2 overflow-x-auto pb-1 no-scrollbar">
+                        ${['principais', 'brasil', 'mundo', 'economia', 'esportes', 'tecnologia'].map(cat => `
+                            <button onclick="changeNewsCategory('${cat}')" class="px-3.5 py-1.5 rounded-xl text-xs font-semibold whitespace-nowrap transition-all ${cat === 'principais' ? 'bg-sky-500 text-white shadow-md' : 'bg-slate-800 text-slate-300 hover:bg-slate-700'}">
+                                ${cat.charAt(0).toUpperCase() + cat.slice(1)}
+                            </button>
+                        `).join('')}
+                    </div>
+
+                    <!-- NEWS ARTICLES FEED LIST -->
+                    <div id="newsArticlesFeed" class="space-y-3">
+                        <div class="text-center py-10 text-slate-400 text-xs">
+                            <i class="fa-solid fa-circle-notch fa-spin text-2xl text-sky-400 mb-2"></i>
+                            <p>Buscando últimas notícias dos portais jornalísticos...</p>
+                        </div>
+                    </div>
+                </div>
+            `;
+
+            const articles = await fetchLiveNews('principais');
+            renderNewsFeedList(articles);
+        }
+
+        async function changeNewsCategory(cat) {
+            const container = document.getElementById('newsArticlesFeed');
+            if (container) {
+                container.innerHTML = `
+                    <div class="text-center py-10 text-slate-400 text-xs">
+                        <i class="fa-solid fa-circle-notch fa-spin text-2xl text-sky-400 mb-2"></i>
+                        <p>Carregando categoria ${cat}...</p>
+                    </div>
+                `;
+            }
+            const articles = await fetchLiveNews(cat);
+            renderNewsFeedList(articles);
+        }
+
+        async function refreshLiveNews() {
+            showToast('Atualizando notícias...', 'info');
+            const articles = await fetchLiveNews('principais', true);
+            renderNewsFeedList(articles);
+            const stamp = document.getElementById('lastUpdateStr');
+            if (stamp) stamp.textContent = appState.lastNewsFetch;
+            showToast('Jornal atualizado!', 'success');
+        }
+
+        function renderNewsFeedList(articles) {
+            const feed = document.getElementById('newsArticlesFeed');
+            if (!feed) return;
+
+            if (!articles || articles.length === 0) {
+                feed.innerHTML = `<p class="text-slate-500 text-xs text-center py-8">Nenhuma notícia encontrada nesta categoria.</p>`;
+                return;
+            }
+
+            feed.innerHTML = articles.map(art => `
+                <div onclick="openNewsModal(${JSON.stringify(art).replace(/"/g, '&quot;')})" class="card-bg bg-slate-800/80 hover:bg-slate-800 border border-slate-800 hover:border-sky-500/40 p-4 rounded-2xl cursor-pointer transition-all shadow-sm group">
+                    <div class="flex items-center justify-between mb-1">
+                        <span class="text-[10px] font-bold text-sky-400 uppercase tracking-wider">${art.source}</span>
+                        <span class="text-[10px] text-slate-400">${new Date(art.pubDate).toLocaleTimeString('pt-BR', { hour: '2-digit', minute: '2-digit' })}</span>
+                    </div>
+                    <h3 class="font-bold text-xs sm:text-sm text-slate-100 group-hover:text-sky-400 transition-colors line-clamp-2">${art.title}</h3>
+                    <p class="text-xs text-slate-400 mt-1 line-clamp-2">${art.description}</p>
+                    <div class="mt-3 flex items-center text-[11px] font-semibold text-sky-400 group-hover:translate-x-1 transition-transform">
+                        <span>Ler matéria na íntegra</span>
+                        <i class="fa-solid fa-arrow-right text-[10px] ml-1"></i>
+                    </div>
+                </div>
+            `).join('');
+        }
+
+        function filterNewsByKeyword() {
+            const input = document.getElementById('newsSearchInput');
+            if (!input) return;
+            const kw = input.value.toLowerCase().trim();
+
+            if (!kw) {
+                renderNewsFeedList(appState.newsCache);
+                return;
+            }
+
+            const filtered = appState.newsCache.filter(a => 
+                a.title.toLowerCase().includes(kw) || a.description.toLowerCase().includes(kw) || a.source.toLowerCase().includes(kw)
+            );
+            renderNewsFeedList(filtered);
+        }
+
+        function openNewsModal(article) {
+            openModal(`
+                <div class="space-y-4">
+                    <div class="flex items-center justify-between border-b border-slate-800 pb-3">
+                        <span class="text-xs font-bold text-sky-400 uppercase tracking-wider">${article.source}</span>
+                        <button onclick="closeModal()" class="text-slate-400 hover:text-white"><i class="fa-solid fa-xmark text-lg"></i></button>
+                    </div>
+                    
+                    <h2 class="text-base sm:text-lg font-bold text-white leading-snug">${article.title}</h2>
+                    <p class="text-[11px] text-slate-400"><i class="fa-regular fa-calendar mr-1"></i>Publicado em: ${new Date(article.pubDate).toLocaleString('pt-BR')}</p>
+
+                    <div class="p-4 bg-slate-900/80 rounded-2xl border border-slate-800 text-xs sm:text-sm text-slate-300 leading-relaxed">
+                        ${article.description}
+                    </div>
+
+                    <div class="pt-2 flex items-center justify-end space-x-2">
+                        <button onclick="closeModal()" class="px-4 py-2 bg-slate-800 text-slate-300 text-xs font-semibold rounded-xl">Fechar</button>
+                        <a href="${article.link}" target="_blank" rel="noopener noreferrer" class="px-4 py-2 bg-sky-500 hover:bg-sky-600 text-white text-xs font-semibold rounded-xl flex items-center space-x-1 shadow-lg">
+                            <span>Abrir Portal Oficial</span>
+                            <i class="fa-solid fa-arrow-up-right-from-square text-[10px] ml-1"></i>
+                        </a>
+                    </div>
+                </div>
+            `);
+        }
+
+        /* --- SETTINGS TAB --- */
+        function renderSettingsTab(container) {
+            container.innerHTML = `
+                <div class="space-y-4">
+                    <!-- PROFILE FORM CARD -->
+                    <div class="card-bg bg-slate-800/80 border border-slate-800 p-4 rounded-2xl space-y-3">
+                        <h3 class="font-bold text-sm text-white flex items-center">
+                            <i class="fa-solid fa-user-gear text-sky-400 mr-2"></i>Perfil do Usuário
+                        </h3>
+                        <div>
+                            <label class="text-[11px] text-slate-400 block mb-1">Seu Nome</label>
+                            <input id="setUserName" type="text" value="${appState.user.name}" class="w-full bg-slate-900 border border-slate-700 rounded-xl px-3 py-2 text-xs text-white outline-none">
+                        </div>
+                        <div class="grid grid-cols-2 gap-2">
+                            <div>
+                                <label class="text-[11px] text-slate-400 block mb-1">Estado (UF)</label>
+                                <input id="setUserState" type="text" value="${appState.user.state}" class="w-full bg-slate-900 border border-slate-700 rounded-xl px-3 py-2 text-xs text-white outline-none">
+                            </div>
+                            <div>
+                                <label class="text-[11px] text-slate-400 block mb-1">Cidade</label>
+                                <input id="setUserCity" type="text" value="${appState.user.city}" class="w-full bg-slate-900 border border-slate-700 rounded-xl px-3 py-2 text-xs text-white outline-none">
+                            </div>
+                        </div>
+                        <button onclick="saveUserProfile()" class="w-full py-2 bg-sky-500 hover:bg-sky-600 text-white text-xs font-semibold rounded-xl shadow-md">
+                            Salvar Perfil
+                        </button>
+                    </div>
+
+                    <!-- THEMES SELECTOR CARD -->
+                    <div class="card-bg bg-slate-800/80 border border-slate-800 p-4 rounded-2xl space-y-3">
+                        <h3 class="font-bold text-sm text-white flex items-center">
+                            <i class="fa-solid fa-palette text-amber-400 mr-2"></i>Tema Visual
+                        </h3>
+                        <div class="grid grid-cols-2 gap-2">
+                            <button onclick="setAppTheme('dark')" class="p-3 bg-slate-900 border border-slate-700 rounded-xl text-xs text-slate-200 font-semibold flex items-center justify-between">
+                                <span>Escuro</span>
+                                <i class="fa-solid fa-moon text-sky-400"></i>
+                            </button>
+                            <button onclick="setAppTheme('amoled')" class="p-3 bg-black border border-neutral-800 rounded-xl text-xs text-white font-semibold flex items-center justify-between">
+                                <span>AMOLED</span>
+                                <i class="fa-solid fa-circle text-amber-400"></i>
+                            </button>
+                            <button onclick="setAppTheme('sepia')" class="p-3 bg-[#f4ebd0] border border-[#d3c19a] rounded-xl text-xs text-[#433422] font-semibold flex items-center justify-between">
+                                <span>Sépia</span>
+                                <i class="fa-solid fa-book-open text-amber-700"></i>
+                            </button>
+                        </div>
+                    </div>
+
+                    <!-- BACKUP & RESTORE JSON -->
+                    <div class="card-bg bg-slate-800/80 border border-slate-800 p-4 rounded-2xl space-y-3">
+                        <h3 class="font-bold text-sm text-white flex items-center">
+                            <i class="fa-solid fa-database text-emerald-400 mr-2"></i>Backup & Dados
+                        </h3>
+                        <div class="flex space-x-2">
+                            <button onclick="exportJSONBackup()" class="flex-1 py-2 bg-slate-700 hover:bg-slate-600 text-white text-xs font-semibold rounded-xl">
+                                Exportar Backup JSON
+                            </button>
+                            <button onclick="triggerJSONRestore()" class="flex-1 py-2 bg-slate-700 hover:bg-slate-600 text-white text-xs font-semibold rounded-xl">
+                                Importar Backup JSON
+                            </button>
+                            <input id="restoreFileInput" type="file" accept=".json" class="hidden" onchange="handleJSONRestore(event)">
+                        </div>
+                    </div>
+                </div>
+            `;
+        }
+
+        function saveUserProfile() {
+            const name = document.getElementById('setUserName');
+            const state = document.getElementById('setUserState');
+            const city = document.getElementById('setUserCity');
+
+            if (name) appState.user.name = name.value.trim() || 'Usuário';
+            if (state) appState.user.state = state.value.trim() || 'SP';
+            if (city) appState.user.city = city.value.trim() || 'São Paulo';
+
+            saveState();
+            showToast('Perfil salvo com sucesso!', 'success');
+        }
+
+        function setAppTheme(themeName) {
+            appState.theme = themeName;
+            document.body.className = `bg-slate-900 text-slate-100 min-h-screen flex justify-center items-start sm:py-4 theme-${themeName}`;
+            saveState();
+            showToast(`Tema ${themeName.toUpperCase()} aplicado!`, 'info');
+        }
+
+        function exportJSONBackup() {
+            const dataStr = "data:text/json;charset=utf-8," + encodeURIComponent(JSON.stringify(appState, null, 2));
+            const dlAnchor = document.createElement('a');
+            dlAnchor.setAttribute("href", dataStr);
+            dlAnchor.setAttribute("download", `DiaClaro_Backup_${getFormattedDate(0)}.json`);
+            document.body.appendChild(dlAnchor);
+            dlAnchor.click();
+            dlAnchor.remove();
+            showToast('Backup exportado!', 'success');
+        }
+
+        function triggerJSONRestore() {
+            document.getElementById('restoreFileInput').click();
+        }
+
+        function handleJSONRestore(event) {
+            const file = event.target.files[0];
+            if (!file) return;
+
+            const reader = new FileReader();
+            reader.onload = function(e) {
+                try {
+                    const parsed = JSON.parse(e.target.result);
+                    appState = { ...appState, ...parsed };
+                    saveState();
+                    showToast('Dados restaurados com sucesso!', 'success');
+                    switchTab('home');
+                } catch (err) {
+                    showToast('Arquivo JSON inválido.', 'error');
+                }
+            };
+            reader.readAsText(file);
+        }
+
+        /* --- GLOBAL MODALS HELPERS --- */
+        function openModal(htmlContent) {
+            const overlay = document.getElementById('modalOverlay');
+            const container = document.getElementById('modalContainer');
+            container.innerHTML = htmlContent;
+            overlay.classList.remove('hidden');
+        }
+
+        function closeModal() {
+            const overlay = document.getElementById('modalOverlay');
+            overlay.classList.add('hidden');
+        }
+
+        function toggleQuickAddModal() {
+            openModal(`
+                <div class="space-y-4">
+                    <div class="flex items-center justify-between border-b border-slate-800 pb-3">
+                        <h3 class="font-bold text-sm text-white"><i class="fa-solid fa-bolt text-amber-400 mr-2"></i>Atalho Inteligente (Linguagem Natural)</h3>
+                        <button onclick="closeModal()" class="text-slate-400 hover:text-white"><i class="fa-solid fa-xmark text-lg"></i></button>
+                    </div>
+                    <p class="text-xs text-slate-400">Digite em frase natural. Nosso parser identificará horário e título automaticamente.</p>
+                    <input id="modalNlpInput" type="text" placeholder="Ex: Dentista amanhã às 14h30" class="w-full bg-slate-900 border border-slate-700 rounded-xl px-3 py-2 text-xs text-white outline-none">
+                    <button onclick="submitModalNlp()" class="w-full py-2.5 bg-sky-500 hover:bg-sky-600 text-white font-semibold rounded-xl text-xs shadow-lg">
+                        Adicionar à Agenda
+                    </button>
+                </div>
+            `);
+        }
+
+        function submitModalNlp() {
+            const input = document.getElementById('modalNlpInput');
+            if (!input || !input.value.trim()) return;
+
+            const ev = parseQuickNLPInput(input.value.trim());
+            if (ev) {
+                appState.events.push(ev);
+                saveState();
+                closeModal();
+                showToast(`Evento "${ev.title}" adicionado!`, 'success');
+                if (currentTab === 'home') renderHomeTab(document.getElementById('mainContent'));
+                else if (currentTab === 'calendar') renderCalendarTab(document.getElementById('mainContent'));
+            }
+        }
+
+        function openNewEventModal(defaultDate = getFormattedDate(0)) {
+            openModal(`
+                <div class="space-y-4">
+                    <div class="flex items-center justify-between border-b border-slate-800 pb-3">
+                        <h3 class="font-bold text-sm text-white"><i class="fa-solid fa-calendar-plus text-sky-400 mr-2"></i>Novo Evento na Agenda</h3>
+                        <button onclick="closeModal()" class="text-slate-400 hover:text-white"><i class="fa-solid fa-xmark text-lg"></i></button>
+                    </div>
+                    <div class="space-y-3">
+                        <div>
+                            <label class="text-[11px] text-slate-400 block mb-1">Título</label>
+                            <input id="evTitle" type="text" placeholder="Nome do compromisso..." class="w-full bg-slate-900 border border-slate-700 rounded-xl px-3 py-2 text-xs text-white outline-none">
+                        </div>
+                        <div class="grid grid-cols-2 gap-2">
+                            <div>
+                                <label class="text-[11px] text-slate-400 block mb-1">Data</label>
+                                <input id="evDate" type="date" value="${defaultDate}" class="w-full bg-slate-900 border border-slate-700 rounded-xl px-3 py-2 text-xs text-white outline-none">
+                            </div>
+                            <div>
+                                <label class="text-[11px] text-slate-400 block mb-1">Horário</label>
+                                <input id="evTime" type="time" value="09:00" class="w-full bg-slate-900 border border-slate-700 rounded-xl px-3 py-2 text-xs text-white outline-none">
+                            </div>
+                        </div>
+                        <div>
+                            <label class="text-[11px] text-slate-400 block mb-1">Categoria</label>
+                            <select id="evCategory" class="w-full bg-slate-900 border border-slate-700 rounded-xl px-3 py-2 text-xs text-white outline-none">
+                                <option value="pessoal">Pessoal</option>
+                                <option value="trabalho">Trabalho</option>
+                                <option value="saude">Saúde / Consulta</option>
+                            </select>
+                        </div>
+                        <div>
+                            <label class="text-[11px] text-slate-400 block mb-1">Observações</label>
+                            <textarea id="evNotes" rows="2" placeholder="Notas adicionais..." class="w-full bg-slate-900 border border-slate-700 rounded-xl px-3 py-2 text-xs text-white outline-none"></textarea>
+                        </div>
+                    </div>
+                    <button onclick="submitNewEventForm()" class="w-full py-2.5 bg-sky-500 hover:bg-sky-600 text-white font-semibold rounded-xl text-xs shadow-lg">
+                        Salvar Evento
+                    </button>
+                </div>
+            `);
+        }
+
+        function submitNewEventForm() {
+            const title = document.getElementById('evTitle');
+            const date = document.getElementById('evDate');
+            const time = document.getElementById('evTime');
+            const cat = document.getElementById('evCategory');
+            const notes = document.getElementById('evNotes');
+
+            if (!title || !title.value.trim()) {
+                showToast('Insira o título do evento.', 'error');
+                return;
+            }
+
+            const newEv = {
+                id: Date.now().toString(),
+                title: title.value.trim(),
+                date: date ? date.value : getFormattedDate(0),
+                time: time ? time.value : '09:00',
+                category: cat ? cat.value : 'pessoal',
+                notes: notes ? notes.value.trim() : ''
+            };
+
+            appState.events.push(newEv);
+            saveState();
+            closeModal();
+            showToast('Evento salvo com sucesso!', 'success');
+            if (currentTab === 'calendar') renderCalendarTab(document.getElementById('mainContent'));
+            else if (currentTab === 'home') renderHomeTab(document.getElementById('mainContent'));
+        }
+
+        /* ==========================================================================
+           8. INITIALIZATION
+           ========================================================================== */
+        window.onload = function() {
+            loadSavedState();
+
+            // Set Top bar date header
+            const topDate = document.getElementById('topDateStr');
+            if (topDate) {
+                const now = new Date();
+                topDate.textContent = now.toLocaleDateString('pt-BR', { weekday: 'short', day: '2-digit', month: 'short', year: 'numeric' });
+            }
+
+            // Apply saved theme
+            if (appState.theme && appState.theme !== 'dark') {
+                document.body.className = `bg-slate-900 text-slate-100 min-h-screen flex justify-center items-start sm:py-4 theme-${appState.theme}`;
+            }
+
+            // Initial view load
+            switchTab('home');
+        };
+    </script>
+</body>
+</html>
